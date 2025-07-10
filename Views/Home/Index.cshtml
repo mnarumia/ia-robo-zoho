@@ -1,0 +1,15 @@
+
+@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Bem-vindo ao RoboIAZoho</h1>
+    <p>Escolha um módulo para acessar:</p>
+
+    <div class="list-group">
+        <a href="@Url.Action("ListLeads", "ZohoCrm")" class="list-group-item">Zoho CRM - Listar Leads</a>
+        <a href="@Url.Action("ListTickets", "ZohoDesk")" class="list-group-item">Zoho Desk - Listar Tickets</a>
+        <a href="@Url.Action("ListProjects", "ZohoProjects")" class="list-group-item">Zoho Projects - Listar Projetos</a>
+    </div>
+</div>
