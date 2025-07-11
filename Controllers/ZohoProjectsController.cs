@@ -1,28 +1,22 @@
 using Microsoft.AspNetCore.Mvc;
-using RoboIAZoho.classes;
-using RoboIAZoho.Models; // Adicionar using para os modelos
-using System.Threading.Tasks;
-using System.Text.Json; // Adicionar using para o JSON
-using System.Collections.Generic;
+using RoboIAZoho.Services;
+using System.Threading.Tasks; // Usar o serviço
 
 namespace RoboIAZoho.Controllers
 {
     public class ZohoProjectsController : Controller
     {
-        private readonly ZohoProjectsApiClient _client;
-        private readonly ApplicationDbContext _context; // Adicionar DbContext
+        private readonly IZohoProjectService _projectService; // Injetar a interface
 
-        // Atualizar construtor para injetar o DbContext
-        public ZohoProjectsController(ZohoProjectsApiClient client, ApplicationDbContext context)
+        public ZohoProjectsController(IZohoProjectService projectService)
         {
-            _client = client;
-            _context = context;
+            _projectService = projectService;
         }
 
         public async Task<IActionResult> ListProjects()
         {
-            var resultJson = await _client.ListProjectsAsync();
-            ViewBag.ProjectsJson = resultJson;
+            //var resultJson = await  _projectService.lis
+            //ViewBag.ProjectsJson = resultJson;
             return View();
         }
 
@@ -79,5 +73,15 @@ namespace RoboIAZoho.Controllers
             ViewBag.ResultMessage = $"Tarefa {mainTask.Id} e seus dados foram importados com sucesso!";
             return View("ListProjects"); // Ou redirecione para uma página de sucesso
         }
+
+        //public async Task<string> ListTasksAsync(string projectId)
+        //{
+        //    // O portal ID é necessário e deve ser gerenciado (ex: via appsettings)
+        //    var portalId = "YOUR_PORTAL_ID"; // Substitua pelo seu Portal ID
+        //    var response = await _client.GetAsync($"portal/{portalId}/projects/{projectId}/tasks/");
+        //    response.EnsureSuccessStatusCode();
+        //    return await response.Content.ReadAsStringAsync();
+        //}
+
     }
 }
