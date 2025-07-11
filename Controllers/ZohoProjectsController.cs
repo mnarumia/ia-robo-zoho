@@ -1,12 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
 using RoboIAZoho.Services;
-using System.Threading.Tasks; // Usar o serviço
+using System;
+using System.Threading.Tasks;
+using System.Collections.Generic; // Para List<Project>
+using RoboIAZoho.Models; // Para os modelos
 
 namespace RoboIAZoho.Controllers
 {
     public class ZohoProjectsController : Controller
     {
-        private readonly IZohoProjectService _projectService; // Injetar a interface
+        private readonly IZohoProjectService _projectService;
 
         public ZohoProjectsController(IZohoProjectService projectService)
         {
@@ -15,73 +18,61 @@ namespace RoboIAZoho.Controllers
 
         public async Task<IActionResult> ListProjects()
         {
-            //var resultJson = await  _projectService.lis
-            //ViewBag.ProjectsJson = resultJson;
-            return View();
+            try
+            {
+                List<Project> projects = await _projectService.GetProjectsFromApiAsync();
+                return View(projects); // Passe o modelo diretamente para a View
+            }
+            catch (Exception ex)
+            {
+                // Tratar o erro de forma amigável
+                ViewBag.ErrorMessage = $"Não foi possível carregar os projetos: {ex.Message}";
+                return View(new List<Project>()); // Retorna uma lista vazia em caso de erro
+            }
         }
 
-        // --- NOVA ACTION ---
-        public async Task<IActionResult> ImportTaskAndSubTasks(string projectId, string taskId)
+        public async Task<IActionResult> ListTasks(string projectId)
         {
-            // 1. Buscar os detalhes da tarefa principal da API
-            var taskJson = await _client.GetTaskDetailsAsync(projectId, taskId);
-            var subTasksJson = await _client.GetSubTasksAsync(projectId, taskId);
-            var attachmentsJson = await _client.GetAttachmentsAsync(projectId, taskId);
-
-            // AQUI: Você precisará desserializar o JSON para os seus modelos.
-            // A estrutura exata do JSON de resposta da API do Zoho deve ser usada para criar
-            // classes DTO (Data Transfer Object) ou para desserializar diretamente.
-            // Por simplicidade, vamos assumir uma desserialização direta para um objeto dinâmico.
-            // Recomenda-se fortemente a criação de classes DTO para robustez.
-
-            // Exemplo de como você poderia processar (requer ajuste com base no JSON real)
-            var mainTask = JsonSerializer.Deserialize<TaskItem>(taskJson); // Supondo que o JSON corresponda ao modelo
-            var subTasks = JsonSerializer.Deserialize<List<SubTask>>(subTasksJson);
-            var attachmentsInfo = JsonSerializer.Deserialize<List<TaskAttachment>>(attachmentsJson);
-
-            // 2. Salvar a tarefa principal
-            mainTask.ProjectId = long.Parse(projectId);
-            _context.Tasks.Add(mainTask);
-
-            // 3. Associar e salvar as subtarefas
-            foreach (var subTask in subTasks)
+            if (string.IsNullOrEmpty(projectId))
             {
-                subTask.ParentTaskId = mainTask.Id;
-                _context.SubTasks.Add(subTask);
+                return RedirectToAction("ListProjects");
             }
 
-            // 4. Baixar e salvar os anexos
-            foreach (var attachmentInfo in attachmentsInfo)
+            try
             {
-                // Baixar o conteúdo do arquivo
-                var fileContent = await _client.DownloadAttachmentAsync(attachmentInfo.ZohoDownloadUrl);
-
-                var attachment = new TaskAttachment
-                {
-                    Id = attachmentInfo.Id,
-                    FileName = attachmentInfo.FileName,
-                    ZohoDownloadUrl = attachmentInfo.ZohoDownloadUrl,
-                    FileContent = fileContent, // Conteúdo do arquivo em bytes
-                    TaskId = mainTask.Id
-                };
-                _context.TaskAttachments.Add(attachment);
+                var tasks = await _projectService.GetTasksFromProjectApiAsync(projectId);
+                ViewBag.ProjectId = projectId;
+                return View(tasks);
             }
-
-            // 5. Salvar todas as alterações no banco de dados
-            await _context.SaveChangesAsync();
-
-            ViewBag.ResultMessage = $"Tarefa {mainTask.Id} e seus dados foram importados com sucesso!";
-            return View("ListProjects"); // Ou redirecione para uma página de sucesso
+            catch (Exception ex)
+            {
+                ViewBag.ErrorMessage = $"Erro ao buscar tarefas: {ex.Message}";
+                return View(new List<TaskItem>());
+            }
         }
 
-        //public async Task<string> ListTasksAsync(string projectId)
-        //{
-        //    // O portal ID é necessário e deve ser gerenciado (ex: via appsettings)
-        //    var portalId = "YOUR_PORTAL_ID"; // Substitua pelo seu Portal ID
-        //    var response = await _client.GetAsync($"portal/{portalId}/projects/{projectId}/tasks/");
-        //    response.EnsureSuccessStatusCode();
-        //    return await response.Content.ReadAsStringAsync();
-        //}
+        // Action para o formulário ou link que inicia a importação
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ImportTask(string projectId, string taskId)
+        {
+            if (string.IsNullOrEmpty(projectId) || string.IsNullOrEmpty(taskId))
+            {
+                return BadRequest("Project ID e Task ID são obrigatórios.");
+            }
 
+            try
+            {
+                await _projectService.ImportTaskWithDetailsAsync(projectId, taskId);
+                TempData["SuccessMessage"] = $"Tarefa {taskId} e seus dados foram importados com sucesso!";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = $"Falha ao importar a tarefa {taskId}: {ex.Message}";
+            }
+
+            // Redireciona de volta para a lista de tarefas do projeto
+            return RedirectToAction("ListTasks", new { projectId = projectId });
+        }
     }
 }

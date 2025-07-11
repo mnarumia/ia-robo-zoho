@@ -1,7 +1,9 @@
 ﻿using RoboIAZoho.classes;
 using RoboIAZoho.Models;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading.Tasks;
+using System.Linq; // Necessário para .Any()
 
 namespace RoboIAZoho.Services
 {
@@ -16,27 +18,78 @@ namespace RoboIAZoho.Services
             _context = context;
         }
 
-        public async Task<List<TaskItem>> GetTasksFromProjectApiAsync(string projectId)
+        public async Task<List<Project>> GetProjectsFromApiAsync()
         {
-            // A lógica de negócio está aqui
-           // return await _apiClient.ListTasksAsync(projectId);
-           return null;
+            var projectsJson = await _apiClient.ListProjectsAsync();
+            // Supondo que a API retorna um objeto com uma propriedade "projects"
+            var apiResponse = JsonSerializer.Deserialize<ProjectsApiResponse>(projectsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return apiResponse?.Projects ?? new List<Project>();
         }
 
-        public async Task ImportTaskDetailsAsync(string projectId, string taskId)
+        public Task<List<TaskItem>> GetTasksFromProjectApiAsync(string projectId)
         {
-            // A lógica de orquestração fica no serviço, não no controller.
-            // Aqui você chamaria os métodos do _apiClient para buscar detalhes,
-            // subtarefas, anexos, e depois usaria o _context para salvar no banco.
-            // Exemplo:
-            // var taskDetails = await _apiClient.GetTaskDetailsAsync(projectId, taskId);
-            // ... processar e salvar com _context.Tasks.Add(...);
+            // Correção: Remova o 'await' aqui.
+            // Você está simplesmente passando a "promessa" (Task) adiante.
+            return _apiClient.ListTasksAsync(projectId);
+        }
+
+        public async Task ImportTaskWithDetailsAsync(string projectId, string taskId)
+        {
+            // 1. Buscar todos os dados da API em paralelo para mais eficiência
+            var taskDetailsJsonTask = _apiClient.GetTaskDetailsAsync(projectId, taskId);
+            var subTasksJsonTask = _apiClient.GetSubTasksAsync(projectId, taskId);
+            var attachmentsJsonTask = _apiClient.GetAttachmentsAsync(projectId, taskId);
+
+            await Task.WhenAll(taskDetailsJsonTask, subTasksJsonTask, attachmentsJsonTask);
+
+            // 2. Desserializar os resultados
+            // NOTA: Crie classes DTO (como TasksApiResponse) para todas as respostas da API
+            var mainTask = JsonSerializer.Deserialize<TaskItem>(await taskDetailsJsonTask);
+            var subTasks = JsonSerializer.Deserialize<List<SubTask>>(await subTasksJsonTask);
+            var attachmentsInfo = JsonSerializer.Deserialize<List<TaskAttachment>>(await attachmentsJsonTask);
+
+            // 3. Salvar a tarefa principal (verificando se já não existe)
+            if (!_context.Tasks.Any(t => t.Id == mainTask.Id))
+            {
+                mainTask.ProjectId = long.Parse(projectId);
+                _context.Tasks.Add(mainTask);
+            }
+
+            // 4. Salvar as subtarefas
+            foreach (var subTask in subTasks)
+            {
+                if (!_context.SubTasks.Any(s => s.Id == subTask.Id))
+                {
+                    subTask.ParentTaskId = mainTask.Id;
+                    _context.SubTasks.Add(subTask);
+                }
+            }
+
+            // 5. Baixar e salvar os anexos
+            foreach (var attachmentInfo in attachmentsInfo)
+            {
+                if (!_context.TaskAttachments.Any(a => a.Id == attachmentInfo.Id))
+                {
+                    var fileContent = await _apiClient.DownloadAttachmentAsync(attachmentInfo.ZohoDownloadUrl);
+                    var attachment = new TaskAttachment
+                    {
+                        Id = attachmentInfo.Id,
+                        FileName = attachmentInfo.FileName,
+                        FileContent = fileContent,
+                        TaskId = mainTask.Id
+                    };
+                    _context.TaskAttachments.Add(attachment);
+                }
+            }
+
+            // 6. Salvar tudo no banco de dados em uma única transação
             await _context.SaveChangesAsync();
         }
+    }
 
-        public Task<string> ListTasksAsync(string projectId)
-        {
-            throw new System.NotImplementedException();
-        }
+    // Classe auxiliar para desserializar a lista de projetos
+    public class ProjectsApiResponse
+    {
+        public List<Project> Projects { get; set; }
     }
 }

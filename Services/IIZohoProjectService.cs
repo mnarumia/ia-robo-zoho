@@ -6,9 +6,12 @@ namespace RoboIAZoho.Services
 {
     public interface IZohoProjectService
     {
-        Task<List<TaskItem>> GetTasksFromProjectApiAsync(string projectId);
-        Task ImportTaskDetailsAsync(string projectId, string taskId);
+        // Adicionamos um método para listar os projetos
+        Task<List<Project>> GetProjectsFromApiAsync();
 
-        Task<string> ListTasksAsync(string projectId);
+        Task<List<TaskItem>> GetTasksFromProjectApiAsync(string projectId);
+
+        // Este método irá conter toda a lógica de importação
+        Task ImportTaskWithDetailsAsync(string projectId, string taskId);
     }
 }
